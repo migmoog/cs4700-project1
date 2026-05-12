@@ -42,8 +42,8 @@ async fn non_tls(
     hostname: &str,
     port: u32,
     northeastern_username: &str,
-    mut buffer: Vec<u8>,
 ) -> tokio::io::Result<String> {
+    let mut buffer = [0u8; 1024];
     let mut wordleizer = Wordleizer::default();
     let mut messages_to_send = VecDeque::from([Type::Hello {
         northeastern_username: northeastern_username.to_owned(),
@@ -66,7 +66,7 @@ async fn non_tls(
             break ">:-9".to_string();
         }
         let Ok(msg) = serde_json::from_slice::<Type>(&buffer) else {
-            eprintln!("(len: {}){:?}", read_bytes, str::from_utf8(&buffer));
+            // eprintln!("(len: {}){:?}", read_bytes, str::from_utf8(&buffer));
             continue;
         };
 
@@ -96,7 +96,6 @@ async fn non_tls(
 async fn main() {
     let args = Args::parse();
 
-    let buffer: Vec<u8> = vec![];
     if args.should_use_tls {
         //
     } else {
@@ -104,7 +103,6 @@ async fn main() {
             &args.hostname,
             args.port(),
             &args.northeastern_username,
-            buffer,
         )
         .await;
         if result.is_err() {
