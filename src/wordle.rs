@@ -20,7 +20,7 @@ impl Wordleizer {
             .filter(|word| {
                 let char_indices = word.char_indices().collect::<Vec<_>>();
                 let mut unguessed_indices = Vec::new();
-                let mut misplaced_chars = self
+                let misplaced_chars = self
                     .current_guess
                     .iter()
                     .filter_map(|l| {
@@ -41,9 +41,13 @@ impl Wordleizer {
                     }
                 }
 
-                char_indices
-                    .iter()
-                    .all(|(i, c)| unguessed_indices.contains(i) && misplaced_chars.contains(c))
+                if !unguessed_indices.is_empty() && !misplaced_chars.is_empty() {
+                    char_indices
+                        .iter()
+                        .all(|(i, c)| unguessed_indices.contains(i) && misplaced_chars.contains(c))
+                } else {
+                    true
+                }
             })
             .choose(&mut self.rng)
             .expect("should have a remaining guess")
