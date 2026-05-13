@@ -55,59 +55,51 @@ async fn non_tls(
 
     let mut json_bytes = Vec::new();
     let flag = loop {
-        if let Some(msg) = messages_to_send.pop_front() {
+        // send queued messages
+        while let Some(msg) = messages_to_send.pop_front() {
             let mut out = serde_json::to_string(&msg)?;
             out.push('\n');
             println!("Sending: {}", out);
             connection.write_all(out.as_bytes()).await?;
         }
 
-        let read_bytes = connection.read(&mut buffer).await?;
-        if read_bytes == 0 {
-            // eprintln!("Connection over");
-            // break ">:-9".to_string();
-        }
-        // let Ok(msg) = serde_json::from_slice::<Type>(&buffer) else {
-        //     eprintln!("recevied (len: {}){:?}", read_bytes, str::from_utf8(&buffer));
-        //     continue;
-        // };
-        let mut last_index = 0;
-        let l = json_bytes.len();
-        for i in 0..l {
-            last_index = i;
-            if json_bytes[last_index] == '\n' as u8 {
-                if last_index < l {
-                    println!("Newline at {i}. {} bytes remaining", l - last_index);
-                }
-                break;
+        // read the socket until it hits a newline
+        let newline_index = loop {
+            if let Some(index) = json_bytes.iter().position(|byte| *byte == '\n' as u8) {
+                break index;
             }
-        }
-        match serde_json::from_slice::<Type>(&json_bytes[..last_index]) {
-            Ok(msg) => {
-                if last_index < l {
-                    json_bytes.drain(0..=l);
-                }
-                println!("{:?}", msg);
 
-                match msg {
-                    Type::Error { message } => eprintln!("ERROR: {}", message),
-                    Type::Start { id } => {
-                        messages_to_send.push_back(Type::Guess {
-                            id,
-                            word: wordleizer.make_guess(),
-                        });
-                    }
-                    Type::Retry { id, guesses } => {
-                        break "FAKE FLAG".to_string();
-                    }
-                    Type::Bye { id, flag } => break flag,
-                    _ => {}
-                }
+
+            let mut buffer = [0u8; 1024];
+            let bytes_read = connection.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                return Err(tokio::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "CUSTOM: No bytes read",
+                ));
             }
-            Err(_) => {
-                json_bytes.extend_from_slice(&buffer);
+            json_bytes.extend_from_slice(&buffer[..bytes_read]);
+        };
+
+        let server_msg: Type = serde_json::from_slice(&json_bytes[..newline_index])?;
+        println!("Received: {:?}", server_msg);
+        match server_msg {
+            Type::Start { id } => {
+                messages_to_send.push_back(Type::Guess {
+                    id,
+                    word: wordleizer.make_guess(),
+                });
+            },
+            Type::Bye { flag, .. } => {
+                break flag;
             }
+            Type::Retry { id, guesses } => {
+                todo!();
+            }
+            _ => {}
         }
+
+        json_bytes.clear();
     };
 
     Ok(flag)
@@ -121,8 +113,12 @@ async fn main() {
         //
     } else {
         let result = non_tls(&args.hostname, args.port(), &args.northeastern_username).await;
-        if result.is_err() {
-            eprintln!("{:?}", result);
+        match result {
+            Ok(flag) => eprintln!("Got flag (may not be correct one though): {}", flag),
+            Err(e) => eprintln!("Error from non-tls: {:?}", e),
         }
+        // if result.is_err() {
+        //     eprintln!("{:?}", result);
+        // }
     }
 }
