@@ -38,8 +38,8 @@ impl Args {
     }
 }
 
-fn custom_error(text: &str) -> tokio::io::Result<String> {
-    Err(tokio::io::Error::new(std::io::ErrorKind::Other, text))
+fn custom_error(text: &str) -> tokio::io::Error {
+    tokio::io::Error::new(std::io::ErrorKind::Other, text)
 }
 
 async fn play<S>(northeastern_username: &str, mut connection: S) -> tokio::io::Result<String>
@@ -69,7 +69,7 @@ where
             let mut buffer = [0u8; 1024];
             let bytes_read = connection.read(&mut buffer).await?;
             if bytes_read == 0 {
-                return custom_error("CUSTOM: No bytes read");
+                return Err(custom_error("CUSTOM: No bytes read"));
             }
             json_bytes.extend_from_slice(&buffer[..bytes_read]);
         };
@@ -114,9 +114,12 @@ async fn main() -> tokio::io::Result<()> {
         let connector = native_tls::TlsConnector::builder()
             .danger_accept_invalid_certs(true)
             .build()
-            .unwrap();
+            .map_err(|e| custom_error(e.to_string().as_str()))?;
         let connector = tokio_native_tls::TlsConnector::from(connector);
-        let stream = connector.connect(&args.hostname, stream).await.unwrap();
+        let stream = connector
+            .connect(&args.hostname, stream)
+            .await
+            .map_err(|e| custom_error(e.to_string().as_str()))?;
         play(&args.northeastern_username, stream).await?
     } else {
         play(&args.northeastern_username, stream).await?
