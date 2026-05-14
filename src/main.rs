@@ -57,7 +57,6 @@ where
         while let Some(msg) = messages_to_send.pop_front() {
             let mut out = serde_json::to_string(&msg)?;
             out.push('\n');
-            println!("Sending: {}", out);
             connection.write_all(out.as_bytes()).await?;
         }
 
@@ -75,8 +74,8 @@ where
             json_bytes.extend_from_slice(&buffer[..bytes_read]);
         };
 
+        // match over types of messages and perform neccessary actions
         let server_msg: Type = serde_json::from_slice(&json_bytes[..newline_index])?;
-        println!("Received: {:?}", server_msg);
         match server_msg {
             Type::Start { id } => {
                 messages_to_send.push_back(Type::Guess {
@@ -123,7 +122,7 @@ async fn main() -> tokio::io::Result<()> {
         play(&args.northeastern_username, stream).await?
     };
 
-    println!("Got a flag: {}", result);
+    println!("{}", result);
 
     Ok(())
 }
