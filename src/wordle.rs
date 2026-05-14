@@ -1,68 +1,30 @@
-use rand::rngs::ThreadRng;
-use std::collections::HashSet;
-
 mod guesses;
 
-use guesses::LetterGuess;
 use guesses::WORDS_LIST;
-use rand::seq::IteratorRandom;
+use rs_wordle_solver::{Guesser, RandomGuesser, WordBank};
+use crate::messages::Guess;
 
 pub struct Wordleizer {
-    rng: ThreadRng,
-    guesses: HashSet<&'static str>,
-    current_guess: [LetterGuess; 5],
+    guesser: RandomGuesser,
 }
 
 impl Wordleizer {
     pub fn make_guess(&mut self) -> String {
-        self.guesses
-            .iter()
-            .filter(|word| {
-                let char_indices = word.char_indices().collect::<Vec<_>>();
-                let mut unguessed_indices = Vec::new();
-                let misplaced_chars = self
-                    .current_guess
-                    .iter()
-                    .filter_map(|l| {
-                        if let LetterGuess::Other(c) = l {
-                            Some(*c)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                for (i, c) in char_indices.iter() {
-                    if let LetterGuess::Correct(correct) = self.current_guess.as_slice()[*i] {
-                        if correct != *c {
-                            return false;
-                        }
-                    } else {
-                        unguessed_indices.push(*i);
-                    }
-                }
-
-                if !unguessed_indices.is_empty() && !misplaced_chars.is_empty() {
-                    char_indices
-                        .iter()
-                        .all(|(i, c)| unguessed_indices.contains(i) && misplaced_chars.contains(c))
-                } else {
-                    true
-                }
-            })
-            .choose(&mut self.rng)
-            .expect("should have a remaining guess")
+        self.guesser.select_next_guess()
+            .expect("Should have a remaining guess")
             .to_string()
+    }
+
+    pub fn adjust(&mut self, guess: &Guess) {
+        self.guesser.update(&guess.to_solver_guess()).unwrap()
     }
 }
 
 impl Default for Wordleizer {
     fn default() -> Self {
-        let guesses = WORDS_LIST.lines().collect();
-
+        let wordbank = WordBank::from_iterator(WORDS_LIST.lines()).unwrap();
         Self {
-            guesses,
-            rng: rand::rng(),
-            current_guess: Default::default(),
+            guesser: RandomGuesser::new(wordbank),
         }
     }
 }

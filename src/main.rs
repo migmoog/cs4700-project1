@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use clap::Parser;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpSocket, TcpStream},
+    net::TcpStream,
 };
 
 use crate::{messages::Type, wordle::Wordleizer};
@@ -43,7 +43,6 @@ async fn non_tls(
     port: u32,
     northeastern_username: &str,
 ) -> tokio::io::Result<String> {
-    let mut buffer = [0u8; 1024];
     let mut wordleizer = Wordleizer::default();
     let mut messages_to_send = VecDeque::from([Type::Hello {
         northeastern_username: northeastern_username.to_owned(),
@@ -69,7 +68,6 @@ async fn non_tls(
                 break index;
             }
 
-
             let mut buffer = [0u8; 1024];
             let bytes_read = connection.read(&mut buffer).await?;
             if bytes_read == 0 {
@@ -89,12 +87,16 @@ async fn non_tls(
                     id,
                     word: wordleizer.make_guess(),
                 });
-            },
+            }
             Type::Bye { flag, .. } => {
                 break flag;
             }
             Type::Retry { id, guesses } => {
-                todo!();
+                wordleizer.adjust(&guesses.last().unwrap());
+                messages_to_send.push_back(Type::Guess {
+                    id,
+                    word: wordleizer.make_guess(),
+                });
             }
             _ => {}
         }

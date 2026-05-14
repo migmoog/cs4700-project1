@@ -1,11 +1,3 @@
-#[derive(Default, PartialEq)]
-pub enum LetterGuess {
-    Correct(char),
-    Other(char),
-    #[default]
-    Wrong,
-}
-
 pub const WORDS_LIST: &'static str = "aahed
 aalii
 aargh
