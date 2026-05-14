@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use clap::Parser;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::TcpStream,
 };
 
@@ -13,10 +13,10 @@ mod wordle;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(short)]
+    #[arg(short = 'p')]
     port: Option<u32>,
 
-    #[arg(short)]
+    #[arg(short = 's')]
     should_use_tls: bool,
 
     hostname: String,
@@ -38,19 +38,18 @@ impl Args {
     }
 }
 
-async fn non_tls(
-    hostname: &str,
-    port: u32,
-    northeastern_username: &str,
-) -> tokio::io::Result<String> {
+fn custom_error(text: &str) -> tokio::io::Result<String> {
+    Err(tokio::io::Error::new(std::io::ErrorKind::Other, text))
+}
+
+async fn play<S>(northeastern_username: &str, mut connection: S) -> tokio::io::Result<String>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let mut wordleizer = Wordleizer::default();
     let mut messages_to_send = VecDeque::from([Type::Hello {
         northeastern_username: northeastern_username.to_owned(),
     }]);
-
-    let addr = format!("{hostname}:{port}");
-    println!("Connecting to: {}", addr);
-    let mut connection = TcpStream::connect(addr).await?;
 
     let mut json_bytes = Vec::new();
     let flag = loop {
@@ -71,10 +70,7 @@ async fn non_tls(
             let mut buffer = [0u8; 1024];
             let bytes_read = connection.read(&mut buffer).await?;
             if bytes_read == 0 {
-                return Err(tokio::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "CUSTOM: No bytes read",
-                ));
+                return custom_error("CUSTOM: No bytes read");
             }
             json_bytes.extend_from_slice(&buffer[..bytes_read]);
         };
@@ -108,19 +104,26 @@ async fn non_tls(
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> tokio::io::Result<()> {
     let args = Args::parse();
 
-    if args.should_use_tls {
-        //
+    let addr = format!("{}:{}", args.hostname, args.port());
+    let stream = TcpStream::connect(addr.as_str()).await?;
+
+    let result = if args.should_use_tls {
+        let args = args;
+        let connector = native_tls::TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap();
+        let connector = tokio_native_tls::TlsConnector::from(connector);
+        let stream = connector.connect(&args.hostname, stream).await.unwrap();
+        play(&args.northeastern_username, stream).await?
     } else {
-        let result = non_tls(&args.hostname, args.port(), &args.northeastern_username).await;
-        match result {
-            Ok(flag) => eprintln!("Got flag (may not be correct one though): {}", flag),
-            Err(e) => eprintln!("Error from non-tls: {:?}", e),
-        }
-        // if result.is_err() {
-        //     eprintln!("{:?}", result);
-        // }
-    }
+        play(&args.northeastern_username, stream).await?
+    };
+
+    println!("Got a flag: {}", result);
+
+    Ok(())
 }
